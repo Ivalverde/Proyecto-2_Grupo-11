@@ -1,0 +1,186 @@
+`timescale 1ns / 1ps
+
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 	Instituto Tecnológico de Costa Rica
+//
+// Engineer: 	Geiner Granados Brenes
+//					Isaac Valverde Fernández
+// 
+// Create Date:    	14:29:28 13/08/2015 
+// Design Name: 		SCI
+// Module Name:    	FSM 
+// Project Name: 		I Proyecto Digitales
+// Target Devices: 	Spartan 6
+// Tool versions: 
+// Description: 
+//
+// Dependencies: 
+//
+// Revision: 
+// Revision 0.01 - File Created
+// Additional Comments: 
+//
+//////////////////////////////////////////////////////////////////////////////////
+
+module FSM(
+	 input wire Clock,
+    input wire SmokeSignal,
+	 input wire [2:0] GasBus,
+    input wire Inhibidor,
+    input wire MasterReset,
+	 output reg Tempo2,
+	 output reg LEdH,
+	 output reg [2:0] LEdG,
+	 output reg [1:0] Bocina,
+	 output reg [2:0] State_salida
+    );
+	
+	localparam [2:0] // Codificación de los estados o etiquetas
+	a = 3'd0,
+	b = 3'd1,
+	c = 3'd4,
+	d = 3'h5,
+	e = 3'h6,
+	f = 3'h7;
+
+	localparam C2 = 16;
+
+reg [2:0] state = a, state_next; // Registros estado actual y siguiente
+reg [12:0] Contador = 13'd0;		// Contador de 10 segundos
+reg [15:0] Contador2 = 16'd0; 	// Contador de 60 segundos
+reg FinalTiempo = 1'd0;				// Indicador de finalización de 10 segundos
+reg FinalTiempo2 = 1'd0;			// Indicador de finalización de 60 segundos
+reg Tempo = 1'd0;						// Bandera para iniciar conteo de 10 segundos
+reg ClkStates = 1'd0;				// Reloj resultante del divisor de frecuencia
+reg [C2:0] Counter = 17'd0; 		// Bus de datos de 17 bits referente al divisor de frecuencia. Realizará 
+											// conteo máximo de 131072 (2^17 = 131072) 
+											
+// Parte Secuencial
+
+always @(posedge Clock) // Divisor de frecuencia. Resultado de la división = 762,94 Hz
+	begin
+		ClkStates <= Counter [C2]; // 16
+		Counter <= Counter + 1'd1; 
+	end
+
+always@(posedge ClkStates) // Registro de paso al siguiente estado
+	state <= state_next;
+ 
+always @(posedge ClkStates) // Contador de 10 segundos
+   if (Tempo)
+      Contador <= Contador + 1'd1;   
+	else
+		Contador <= 13'd0;
+				
+always@*							// Condición para que el conteo se reinicie a los 10 segundos y muestre una bandera 
+   case (Contador)			// en ese momento
+      13'd7629  : 
+               FinalTiempo = 1'd1;
+		13'd7630  : 
+               FinalTiempo = 1'd1;
+      default: 
+					FinalTiempo = 1'd0;		
+   endcase
+						  
+always @(posedge ClkStates) // Contador de 60 segundos
+   if (Tempo2)
+      Contador2 <= Contador2 + 1'd1;   
+	else
+		Contador2 <= 16'd0;
+				
+always@*							// Condición para que el conteo se reinicie a los 60 segundos y muestre una bandera
+   case (Contador2)			// en ese momento
+      16'd45776  : 
+               FinalTiempo2 = 1'd1;
+		16'd45777  : 
+               FinalTiempo2 = 1'd1;
+      default: 
+					FinalTiempo2 = 1'd0;			
+   endcase						
+
+// Parte Combinacional
+
+always@*							// Encendido de los indicadores luminosos
+	begin
+		LEdH = 1'd0;
+		LEdG = 3'd0;
+		if(SmokeSignal)
+			LEdH = 1'd1;
+		if(GasBus[2])
+			LEdG = 3'd4;
+		if(GasBus[1])
+			LEdG = 3'd2;
+		if(GasBus[0])
+			LEdG = 3'd1;
+	end
+
+always@*
+	begin
+		state_next = state;
+		Tempo = 1'd0;
+		Tempo2 = 1'd0;
+		Bocina = 2'd0;
+		case(state)
+		
+			a:
+				begin
+					Tempo2 = 1'd0;
+					if(SmokeSignal)
+						state_next = c;
+					else
+						state_next = b;
+				end
+				
+			b:
+				if(GasBus[2])
+					state_next = c;
+				else
+					state_next = a;
+			
+			c:
+				begin
+					Tempo = 1'd1;
+					Bocina = 2'd1;
+					if(Inhibidor)
+						state_next = e;
+					else
+						state_next = d;
+				end
+				
+			d:
+				begin
+					Tempo = 1'd1;
+					Bocina = 2'd1;
+					if(FinalTiempo)
+						state_next = f;
+					else
+						state_next = c;
+				end
+				
+			e:
+				begin
+					Tempo = 1'd0;
+					Tempo2 = 1'd1;
+					if(FinalTiempo2)
+						state_next = a;
+					else
+						state_next = e;
+				end
+			
+			f:
+				begin
+					Tempo = 1'd0;
+					Bocina = 2'd2;
+					if(MasterReset)
+						state_next = a;
+					else
+						state_next = f;
+				end
+			
+		endcase
+	end
+
+always@*
+State_salida = state; 		//  Asignación de una señal de salida
+	
+endmodule
