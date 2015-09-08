@@ -1,0 +1,217 @@
+`timescale 1ns / 1ps
+
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 	Instituto Tecnológico de Costa Rica
+//
+// Engineer: 	Geiner Granados Brenes
+//					Isaac Valverde Fernández
+// 
+// Create Date:    	14:29:28 13/08/2015 
+// Design Name: 		SCI
+// Module Name:    	Teclado 
+// Project Name: 		I Proyecto Digitales
+// Target Devices: 	Spartan 6
+// Tool versions: 
+// Description: 
+//
+// Dependencies: 
+//
+// Revision: 
+// Revision 0.01 - File Created
+// Additional Comments: 
+//
+//////////////////////////////////////////////////////////////////////////////////
+
+module Teclado(
+input wire clk,  //Clock de la Nexys 
+input wire BanderaInh, // Bandera que indica que empezó la cuenta de los 60 segundos
+input wire ps2d, // Es el dato de entrada del teclado bit por bit 
+input wire ps2c, // Es el clock del PS2
+input wire rx_en, // Es usado para habilitar o no la operación de recepción de datos
+output reg led, // Pequeña indicación luminosa que indica la entrada de un dato
+output reg [5:0] salida // 6 bits utilizados como entradas de la máquina de estados principal
+								// Inhibir, Master Reset, Gas Alto, Gas Medio, Gas Bajo y Humo	                  
+) ;
+
+localparam [2:0] 
+	idle    = 3'd0, // Estados de la FSM correspondiente a la entrada de datos  
+	dps     = 3'd1,     
+	load    = 3'd2,
+	final   = 3'd3,
+	final2  = 3'd4,	
+	waiting = 3'd5;
+
+reg [2:0] state_reg = 3'd0; // Registros del estado actual y siguiente de la FSM del teclado
+reg [2:0] state_next = 3'd0;
+ 
+reg [5:0] salida_reg = 6'd0; // Registros que almacenan el dato decodificado utilizado en la salida de este módulo
+reg [5:0] salida_next = 6'd0;
+
+reg verdad_reg = 1'd0; // Registros de detección de F0
+reg verdad_next = 1'd0;
+
+reg bandera_reg = 1'd0; // Registros que se utilizan para almacenar el dato siguiente a F0
+reg bandera_next = 1'd0;
+
+reg [7:0] filter_reg = 8'd0; // Registros utilizados para almacenar la información del clock del teclado
+wire[7:0] filter_next;
+
+reg f_ps2c_reg = 1'd0; // Se utilizan para la detección de flancos negativos del clock del teclado
+wire f_ps2c_next; 
+   
+reg [3:0] n_reg = 4'd0, n_next = 4'd0; // Cuenta cuántos bits faltan por leer, por lo que por cada ciclo, a n se le 
+													// irá disminuyendo un 1
+													
+reg [10:0] b_reg = 11'd0, b_next = 11'd0; // Variables donde se almacenan los once datos que envia el teclado 
+
+wire fall_edge;  // señal de flanco negativo 
+
+//Detector de flancos
+
+always @(posedge clk)
+	begin
+		filter_reg<= filter_next; // Actualización de los valores del recolector de datos del clock de la ps2
+		f_ps2c_reg<= f_ps2c_next;  
+	end
+	
+assign filter_next = {ps2c,filter_reg[7:1]}; // Se van metiendo los estados del clock del teclado  
+assign f_ps2c_next = (filter_reg==8'b11111111) ? 1'b1: // Se asigna el valor de 1 o 0 a la variable f_ps2c_next
+					 (filter_reg==8'b00000000) ? 1'b0: 
+					 f_ps2c_reg; // Se asigna el valor actual de la variable al estado siguiente
+ assign fall_edge = f_ps2c_reg & ~f_ps2c_next; // Detección de flancos negativos
+
+// Parte secuencial de la máquina de estado (FSM) y datos de los registros
+
+always @(posedge clk)  // Cargar estados siguientes a estados actuales
+		begin
+			state_reg <= state_next;
+			n_reg <= n_next;
+			b_reg <= b_next;
+			verdad_reg <= verdad_next;
+			bandera_reg <= bandera_next;
+		end
+				
+/////Parte combinacional
+
+always @*
+begin 
+	state_next = state_reg;
+	bandera_next = bandera_reg;
+	verdad_next = verdad_reg;
+	n_next = n_reg;
+	b_next = b_reg;
+	case(state_reg)
+	
+		idle:
+			if (fall_edge & rx_en)
+				begin
+					b_next = {ps2d, b_reg[10:1]}; // Se mete el bit de inicio en el paqute de datos
+					n_next = 4'd9; // Se establece esta variable en nueve para luego ser decrementada 
+					state_next = dps;  // Se pasa al estado dps
+				end
+			else
+				if (BanderaInh == 1'd1 && salida_reg[5] == 1'd1) // Condición para forzar dato de teclado
+					begin
+						b_next = 11'b10010110100; // Se forza un "Enter" a la variable que almacena los datos de teclado  
+						verdad_next = 1'd1;
+						state_next = waiting; // Se pasa al estado waiting
+					end
+
+		dps: 
+			if (fall_edge)
+				begin
+					b_next = {ps2d, b_reg[10:1]}; // Se meten los 8 datos de teclado, el bit de paridad y el stop bit
+					if (n_reg==0)
+						state_next = load; // Se pasa al estado load
+					else
+						n_next = n_reg - 1'd1; // Cuenta regresiva de nueve, para meter todos los bits del dato de teclado
+				end
+
+		load: 
+			if (b_reg[8:1] == 8'hF0) // Detección del F0 de un dato
+				begin
+					verdad_next = 1'd1;
+					state_next = idle; // Se pasa al estado idle
+				end
+			else     
+				state_next = final; // Se pasa al estado final
+
+		final:
+			if (verdad_reg == 1'd1)
+				begin
+					bandera_next = 1'd1; // Se activa la bandera que evalua el dato en sistema de decodificación
+					state_next = final2; // Se pasa al estado final2
+				end
+			else 
+				state_next = idle; // Se pasa al estado idle
+			
+		final2:
+			begin
+				state_next = idle; // Se pasa al estado idle
+				verdad_next = 1'd0; // Se apagan las banderas
+				bandera_next = 1'd0;
+			end
+			
+		waiting:
+			state_next = final; // Estado utilizado para dar tiempo al registro verdad_reg de que se actualize
+			
+	endcase
+end
+	
+always @(posedge clk)  // Se cargan las varibles del dato decodificado
+	salida_reg <= salida_next;
+
+always @*
+begin
+	salida_next = salida_reg;
+	if (bandera_reg == 1'd1)
+	case(b_reg[8:1])
+
+		8'h33: // H
+			begin
+				salida_next[0] = 1'b1; // Pone en 1 la entrada de humo
+				salida_next[4] = 1'b0; // Desactiva el reset
+			end
+		
+		8'h16: // 1
+			salida_next[3:1] = 3'b001; // Enciende el gas bajo
+			
+		8'h1E: // 2
+			salida_next[3:1] = 3'b010; // Enciende el gas bajo
+				
+		8'h26: // 3
+			begin
+				salida_next[3:1] = 3'b100; // Enciende el gas alto
+				salida_next[4] = 1'b0; // Desactiva el reset
+			end
+				
+		8'h2D: // R
+			salida_next = 6'b010000; // Activa el reset
+			
+		8'h43: // I
+			salida_next[5] = 1'b1; // Activa el inhibidor
+			
+		8'h5A: // Enter
+			salida_next[5] = 1'b0; // Desactiva el inhibidor
+				
+		8'h3B: // J
+			salida_next[0] = 1'b0; // Desactiva el humo
+		
+		8'h15: // Q
+			salida_next[3:1] = 3'b000; // Desactiva el gas
+			
+		8'h66: // Back Space
+			salida_next = 6'b000000; // Desactiva todas las entradas
+		
+	endcase	
+end
+
+always @*
+begin
+	led = b_reg[0]; // Pequeña indicación que indica que se está presionando una tecla
+	salida = salida_reg; // Se mete el dato en una salida del módulo
+end
+
+endmodule
+
+
