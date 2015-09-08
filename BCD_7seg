@@ -1,0 +1,183 @@
+`timescale 1ns / 1ps
+
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 	Instituto Tecnológico de Costa Rica
+//
+// Engineer: 	Geiner Granados Brenes
+//					Isaac Valverde Fernández
+// 
+// Create Date:    	14:29:28 13/08/2015 
+// Design Name: 		SCI
+// Module Name:    	BCD_7seg 
+// Project Name: 		I Proyecto Digitales
+// Target Devices: 	Spartan 6
+// Tool versions: 
+// Description: 
+//
+// Dependencies: 
+//
+// Revision: 
+// Revision 0.01 - File Created
+// Additional Comments: 
+//
+//////////////////////////////////////////////////////////////////////////////////
+
+module BCD_7seg(
+    input wire Clock,
+    input wire [2:0] State,
+	 input wire [1:0] Gas,
+	 output reg [11:0] BCDCode
+    );
+	 
+	localparam [2:0] // Codificación de los estados o etiquetas
+	a = 3'd0,
+	b = 3'd1,
+	c = 3'd4,
+	d = 3'h5,
+	e = 3'h6,
+	f = 3'h7;
+
+	localparam C1 = 11;
+	
+reg [1:0] BCDCounter = 2'd0; 	// Contador para seleccionar los 4 displays de manera secuencial
+reg ClkDisplay = 1'd0;       	// Reloj resultante del divisor de frecuencia
+reg [C1:0] Counter = 12'd0; 	// Bus de datos de 17 bits referente al divisor de frecuencia. Realizará conteo 
+										// máximo de 4096 (2^12 = 4096) 
+
+// Parte Secuencial
+
+always @(posedge Clock) // Se procede a realizar el codigo posterior siempre que "clk" o "reset" estén en alto.
+	begin
+		ClkDisplay <= Counter [C1]; // 11 Divisor de frecuencia. Resultado de la división = 24,41 kHz
+		Counter <= Counter + 1'd1;
+	end
+
+always@(posedge ClkDisplay)
+BCDCounter <= BCDCounter + 1'd1;
+
+// Parte Combinacional
+
+always@*
+begin
+	BCDCode = 12'd0;
+	case (State)
+	
+      a :  // Estado 'a'
+		
+			if (Gas[1]) 
+				case (BCDCounter)// Escribir 'GAS2'
+						
+					2'd0  	: 	BCDCode = 12'hE41;
+					2'd1  	: 	BCDCode = 12'hD11;
+					2'd2  	:  BCDCode = 12'hB48;
+					2'd3  	: 	BCDCode = 12'h725;
+					default	: 	BCDCode = 12'hFFF;
+							
+				endcase// Escribir 'GAS2'
+			else 
+				if (Gas[0])
+					case (BCDCounter) // Escribir 'GAS1'
+							
+						2'd0  	: 	BCDCode = 12'hE41;
+						2'd1  	: 	BCDCode = 12'hD11;
+						2'd2  	: 	BCDCode = 12'hB48;
+						2'd3  	: 	BCDCode = 12'h79F;
+						default	: 	BCDCode = 12'hFFF;
+								
+					endcase// Escribir 'GAS1'
+				else 
+					case (BCDCounter)// Escribir 'BIEN'
+							
+						2'd0  	:	BCDCode = 12'hE01;
+						2'd1  	: 	BCDCode = 12'hD9F;
+						2'd2  	: 	BCDCode = 12'hB61;
+						2'd3 		: 	BCDCode = 12'h713;
+						default	: 	BCDCode = 12'hFFF;
+								
+					endcase// Escribir 'BIEN'
+					
+      b :  // Estado 'b'
+		
+			if (Gas[1]) 
+				case (BCDCounter)// Escribir 'GAS2'
+						
+					2'd0  	: 	BCDCode = 12'hE41;
+					2'd1  	: 	BCDCode = 12'hD11;
+					2'd2  	:  BCDCode = 12'hB48;
+					2'd3  	: 	BCDCode = 12'h725;
+					default	: 	BCDCode = 12'hFFF;
+							
+				endcase// Escribir 'GAS2'
+			else 
+				if (Gas[0])
+					case (BCDCounter) // Escribir 'GAS1'
+							
+						2'd0  	: 	BCDCode = 12'hE41;
+						2'd1  	: 	BCDCode = 12'hD11;
+						2'd2  	: 	BCDCode = 12'hB48;
+						2'd3  	: 	BCDCode = 12'h79F;
+						default	: 	BCDCode = 12'hFFF;
+								
+					endcase// Escribir 'GAS1'
+				else 
+					case (BCDCounter)// Escribir 'BIEN'
+							
+						2'd0  	:	BCDCode = 12'hE01;
+						2'd1  	: 	BCDCode = 12'hD9F;
+						2'd2  	: 	BCDCode = 12'hB61;
+						2'd3 		: 	BCDCode = 12'h713;
+						default	: 	BCDCode = 12'hFFF;
+								
+					endcase// Escribir 'BIEN'
+			
+      c : 
+		
+			case (BCDCounter)// Escribir 'ESP1'
+			
+				2'd0  	: 	BCDCode = 12'hE61;
+				2'd1  	: 	BCDCode = 12'hD49;
+				2'd2  	: 	BCDCode = 12'hB30;
+				2'd3  	: 	BCDCode = 12'h79F;
+				default	: 	BCDCode = 12'hFFF;
+				
+			endcase// Escribir 'ESP1'
+               		
+      d : 
+	
+			case (BCDCounter)// Escribir 'ESP1'
+			
+				2'd0  	: 	BCDCode = 12'hE61;
+				2'd1  	: 	BCDCode = 12'hD49;
+				2'd2  	: 	BCDCode = 12'hB30;
+				2'd3  	: 	BCDCode = 12'h79F;
+				default	: 	BCDCode = 12'hFFF;
+				
+			endcase// Escribir 'ESP1'
+            		
+      e : 
+						             
+			case (BCDCounter)// Escribir 'ESP2'
+			
+				2'd0  	: 	BCDCode = 12'hE61;
+				2'd1  	: 	BCDCode = 12'hD49;
+				2'd2  	: 	BCDCode = 12'hB30;
+				2'd3  	: 	BCDCode = 12'h725;
+				default	: 	BCDCode = 12'hFFF;
+				
+			endcase// Escribir 'ESP2'
+          
+      f :   
+		
+			case (BCDCounter)// Escribir 'HELL'
+			
+				2'b00  : 	BCDCode = 12'hE91;
+				2'b01  : 	BCDCode = 12'hD61;
+				2'b10  : 	BCDCode = 12'hBE3;
+				2'b11  : 	BCDCode = 12'h7E3;
+				default: 	BCDCode = 12'hFFF;
+				
+			endcase// Escribir 'HELL'
+               
+	endcase
+end
+endmodule
